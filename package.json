@@ -1,0 +1,21 @@
+{
+  "name": "ai-contact-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "csv-writer": "^1.6.0",
+    "dotenv": "^17.2.3",
+    "openai": "^6.9.1",
+    "puppeteer": "^24.31.0",
+    "scrapfly-sdk": "^0.6.9"
+  }
+}
