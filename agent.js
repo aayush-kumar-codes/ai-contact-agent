@@ -108,6 +108,6 @@ async function runAgent(nicheSearchUrl, options = {}) {
 
 // Run the agent
 runAgent('https://www.niche.com/k12/search/best-schools/?geoip=true', {
-  maxSchools: 5,
+  maxSchools: 25,
   workflowId: 'your-hubspot-workflow-id' // Optional
 });
