@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { WebScraper } from './src/scraper.js';
 import { AIExtractor } from './src/ai-extractor.js';
 import { exportToCSV } from './src/csv-export.js';
-// import { uploadContactsToHubSpot } from './src/hubspot.js';
+import { uploadContactsToHubSpot } from './src/hubspot.js';
 // import { enrollInWorkflow } from './src/email-automation.js';
 import fs from 'fs/promises';
 
@@ -78,11 +78,22 @@ async function runAgent(nicheSearchUrl, options = {}) {
     await fs.mkdir('output', { recursive: true });
     const csvPath = await exportToCSV(allContacts, outputFile);
 
-    // // Step 4: Upload to HubSpot
-    // console.log('\n📍 Step 4: Uploading to HubSpot...');
-    // const hubspotResults = await uploadContactsToHubSpot(allContacts);
+    // Step 4: Upload to HubSpot
+    let hubspotResults = null;
+    if (allContacts.length > 0) {
+      console.log('\n📍 Step 4: Uploading to HubSpot...');
+      try {
+        hubspotResults = await uploadContactsToHubSpot(allContacts);
+      } catch (error) {
+        console.error('❌ HubSpot upload failed:', error.message);
+        console.error('   Make sure HUBSPOT_ACCESS_TOKEN is set in your .env file');
+        hubspotResults = { success: [], failed: [], total: 0 };
+      }
+    } else {
+      console.log('\n📍 Step 4: Skipping HubSpot upload (no contacts to sync)');
+    }
 
-    // // Step 5: Enroll in email workflow/funnel
+    // Step 5: Enroll in email workflow/funnel (optional)
     // if (workflowId) {
     //   console.log('\n📍 Step 5: Enrolling contacts in email funnel...');
     //   for (const contact of allContacts) {
@@ -96,10 +107,12 @@ async function runAgent(nicheSearchUrl, options = {}) {
     console.log('🎉 Agent Complete!');
     console.log(`   Total contacts extracted: ${allContacts.length}`);
     console.log(`   CSV exported to: ${csvPath}`);
-    // console.log(`   HubSpot synced: ${hubspotResults.success.length}`);
+    if (hubspotResults) {
+      console.log(`   HubSpot synced: ${hubspotResults.success.length} successful, ${hubspotResults.failed.length} failed`);
+    }
     console.log('='.repeat(50));
 
-    return { contacts: allContacts, csvPath };
+    return { contacts: allContacts, csvPath, hubspotResults };
 
   } finally {
     await scraper.close();
