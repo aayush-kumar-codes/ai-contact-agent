@@ -24,6 +24,7 @@ export async function exportToCSV(contacts, filename = "contacts.csv") {
       { id: "contactPhone", title: "Contact Phone Number" },
       { id: "owner", title: "Owner" },
       { id: "companyState", title: "Company State" },
+      { id: "tag", title: "TAG" },
     ],
   })
 
@@ -40,6 +41,7 @@ export async function exportToCSV(contacts, filename = "contacts.csv") {
     contactPhone: contact.phone || "",
     owner: "Partnerships",
     companyState: contact.schoolState || "",
+    tag: "ASAI",
   }))
 
   await csvWriter.writeRecords(csvRecords)

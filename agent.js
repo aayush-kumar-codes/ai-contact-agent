@@ -3,16 +3,25 @@ import { WebScraper } from './src/scraper.js';
 import { AIExtractor } from './src/ai-extractor.js';
 import { exportToCSV } from './src/csv-export.js';
 import { uploadContactsToHubSpot } from './src/hubspot.js';
-import { enrollContactsInWorkflow, sendEmailsToContacts } from './src/email-automation.js';
+import { enrollContactsInSequence } from './src/email-automation.js';
 import fs from 'fs/promises';
 
+
+function getContactsFilename() {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const year = now.getFullYear();
+  return `contacts-${dd}-${mm}-${year}.csv`;
+}
 
 async function runAgent(nicheSearchUrl, options = {}) {
   const {
     maxSchools = 10,
-    workflowId = null,
-    emailTemplateId = null,
-    outputFile = `contacts-${Date.now()}.csv`
+    sequenceId = null,
+    userId = null,
+    senderEmail = null,
+    outputFile = getContactsFilename()
   } = options;
   const aiExtractor = new AIExtractor(process.env.OPENAI_API_KEY);
   const scraper = new WebScraper();
@@ -94,72 +103,44 @@ async function runAgent(nicheSearchUrl, options = {}) {
       console.log('\n📍 Step 4: Skipping HubSpot upload (no contacts to sync)');
     }
 
-    // Step 5: Enroll in email workflow/funnel (optional)
-    let workflowResults = null;
-    if (workflowId && hubspotResults && hubspotResults.success.length > 0) {
-      console.log('\n📍 Step 5: Enrolling contacts in email funnel...');
+    // Step 5: Enroll in Sales Sequence (optional)
+    let sequenceResults = null;
+    if (sequenceId && userId != null && senderEmail && hubspotResults && hubspotResults.success.length > 0) {
+      console.log('\n📍 Step 5: Enrolling contacts in Sales Sequence...');
       try {
         // Get only successfully uploaded contacts
-        const successfulContacts = allContacts.filter(contact => 
+        const successfulContacts = allContacts.filter(contact =>
           hubspotResults.success.some(result => result.email === contact.email)
         );
-        
-        workflowResults = await enrollContactsInWorkflow(
+
+        sequenceResults = await enrollContactsInSequence(
           successfulContacts,
-          workflowId,
+          sequenceId,
+          userId,
+          senderEmail,
           process.env.HUBSPOT_ACCESS_TOKEN,
           {
             delayBetweenContacts: 200,
             onProgress: (progress) => {
               const percentage = ((progress.processed / progress.total) * 100).toFixed(1);
               console.log(
-                `[Workflow] Progress: ${progress.processed}/${progress.total} (${percentage}%) - Success: ${progress.success}, Failed: ${progress.failed}`
+                `[Sequence] Progress: ${progress.processed}/${progress.total} (${percentage}%) - Success: ${progress.success}, Failed: ${progress.failed}`
               );
             },
           }
         );
       } catch (error) {
-        console.error('❌ Workflow enrollment failed:', error.message);
-        workflowResults = { success: [], failed: [], total: 0 };
+        console.error('❌ Sequence enrollment failed:', error.message);
+        sequenceResults = { success: [], failed: [], total: 0 };
       }
-    } else if (workflowId && allContacts.length === 0) {
-      console.log('\n📍 Step 5: Skipping workflow enrollment (no contacts to enroll)');
-    } else if (!workflowId) {
-      console.log('\n📍 Step 5: Skipping workflow enrollment (no workflowId provided)');
-    }
-
-    // Step 6: Send initial transactional emails (optional)
-    let emailResults = null;
-    if (emailTemplateId && hubspotResults && hubspotResults.success.length > 0) {
-      console.log('\n📍 Step 6: Sending initial transactional emails...');
-      try {
-        // Get only successfully uploaded contacts
-        const successfulContacts = allContacts.filter(contact => 
-          hubspotResults.success.some(result => result.email === contact.email)
-        );
-        
-        emailResults = await sendEmailsToContacts(
-          successfulContacts,
-          emailTemplateId,
-          process.env.HUBSPOT_ACCESS_TOKEN,
-          {
-            delayBetweenEmails: 200,
-            onProgress: (progress) => {
-              const percentage = ((progress.processed / progress.total) * 100).toFixed(1);
-              console.log(
-                `[Email] Progress: ${progress.processed}/${progress.total} (${percentage}%) - Success: ${progress.success}, Failed: ${progress.failed}`
-              );
-            },
-          }
-        );
-      } catch (error) {
-        console.error('❌ Email sending failed:', error.message);
-        emailResults = { success: [], failed: [], total: 0 };
-      }
-    } else if (emailTemplateId && allContacts.length === 0) {
-      console.log('\n📍 Step 6: Skipping email sending (no contacts to email)');
-    } else if (!emailTemplateId) {
-      console.log('\n📍 Step 6: Skipping email sending (no emailTemplateId provided)');
+    } else if (sequenceId && userId != null && senderEmail && allContacts.length === 0) {
+      console.log('\n📍 Step 5: Skipping sequence enrollment (no contacts to enroll)');
+    } else if (!sequenceId) {
+      console.log('\n📍 Step 5: Skipping sequence enrollment (no sequenceId provided)');
+    } else if (userId == null) {
+      console.log('\n📍 Step 5: Skipping sequence enrollment (no userId provided)');
+    } else if (!senderEmail) {
+      console.log('\n📍 Step 5: Skipping sequence enrollment (no senderEmail provided)');
     }
 
     // Summary
@@ -170,20 +151,16 @@ async function runAgent(nicheSearchUrl, options = {}) {
     if (hubspotResults) {
       console.log(`   HubSpot synced: ${hubspotResults.success.length} successful, ${hubspotResults.failed.length} failed`);
     }
-    if (workflowResults) {
-      console.log(`   Workflow enrolled: ${workflowResults.success.length} successful, ${workflowResults.failed.length} failed`);
-    }
-    if (emailResults) {
-      console.log(`   Emails sent: ${emailResults.success.length} successful, ${emailResults.failed.length} failed`);
+    if (sequenceResults) {
+      console.log(`   Sequence enrolled: ${sequenceResults.success.length} successful, ${sequenceResults.failed.length} failed`);
     }
     console.log('='.repeat(50));
 
-    return { 
-      contacts: allContacts, 
-      csvPath, 
-      hubspotResults, 
-      workflowResults, 
-      emailResults 
+    return {
+      contacts: allContacts,
+      csvPath,
+      hubspotResults,
+      sequenceResults,
     };
 
   } finally {
@@ -193,7 +170,8 @@ async function runAgent(nicheSearchUrl, options = {}) {
 
 // Run the agent
 runAgent('https://www.niche.com/k12/search/best-schools/?geoip=true', {
-  maxSchools: 25,
-  workflowId: process.env.HUBSPOT_WORKFLOW_ID || null, // Optional: Get from .env or pass directly
-  emailTemplateId: process.env.HUBSPOT_EMAIL_TEMPLATE_ID || null, // Optional: Get from .env or pass directly
+  maxSchools: 5,
+  sequenceId: process.env.SEQUENCE_ID || null,
+  userId: process.env.USER_ID ? parseInt(process.env.USER_ID, 10) : null,
+  senderEmail: process.env.SENDER_EMAIL || null,
 });
