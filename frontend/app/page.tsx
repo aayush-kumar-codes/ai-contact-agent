@@ -1,58 +1,64 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Sidebar from '@/components/Sidebar'
 import ChatArea from '@/components/ChatArea'
 import InputArea from '@/components/InputArea'
 
-const INITIAL_MESSAGES = [
-  {
-    id: '1',
-    content: 'Hello! How can I help you today?',
-    role: 'assistant' as const,
-    timestamp: new Date(Date.now() - 3600000),
-  },
-  {
-    id: '2',
-    content: 'I\'d like to learn about machine learning. Can you explain the basics?',
-    role: 'user' as const,
-    timestamp: new Date(Date.now() - 3500000),
-  },
-  {
-    id: '3',
-    content: 'Machine learning is a subset of artificial intelligence that enables systems to learn and improve from experience without being explicitly programmed. Here are the key concepts:\n\n**Supervised Learning**: Training with labeled data where inputs are paired with correct outputs.\n\n**Unsupervised Learning**: Finding patterns in unlabeled data without predefined outputs.\n\n**Deep Learning**: Using neural networks with multiple layers to process complex patterns.\n\nWould you like me to dive deeper into any of these areas?',
-    role: 'assistant' as const,
-    timestamp: new Date(Date.now() - 3400000),
-  },
-  {
-    id: '4',
-    content: 'Can you explain neural networks in more detail?',
-    role: 'user' as const,
-    timestamp: new Date(Date.now() - 3300000),
-  },
-  {
-    id: '5',
-    content: 'Neural networks are inspired by biological neurons in the human brain. They consist of interconnected nodes (artificial neurons) organized in layers:\n\n**Input Layer**: Receives data\n**Hidden Layers**: Process information through weighted connections\n**Output Layer**: Produces predictions\n\nEach connection has a weight that gets adjusted during training through a process called backpropagation. This allows the network to learn patterns from data and make increasingly accurate predictions.',
-    role: 'assistant' as const,
-    timestamp: new Date(Date.now() - 3200000),
-  },
-]
+const AGENT_API_URL = process.env.NEXT_PUBLIC_AGENT_API_URL || 'http://localhost:3001'
+
+/** Build display text from /agent/chat API response (ok, intent, result, message). */
+function formatAgentResponse(data: {
+  ok: boolean
+  intent?: string
+  result?: { contacts?: unknown[]; csvPath?: string; hubspotResults?: { success?: unknown[]; failed?: unknown[] }; sequenceResults?: { success?: unknown[]; failed?: unknown[] } }
+  message?: string
+}): string {
+  if (!data.ok) {
+    return data.message ?? 'Something went wrong. Please try again.'
+  }
+  const r = data.result
+  if (!r) return 'Done.'
+  const parts: string[] = []
+  if (Array.isArray(r.contacts) && r.contacts.length > 0) {
+    parts.push(`**${r.contacts.length}** contact(s) extracted.`)
+  }
+  if (r.csvPath) {
+    parts.push(`CSV: \`${r.csvPath}\`.`)
+  }
+  if (r.hubspotResults) {
+    const s = r.hubspotResults.success?.length ?? 0
+    const f = r.hubspotResults.failed?.length ?? 0
+    parts.push(`HubSpot: ${s} synced, ${f} failed.`)
+  }
+  if (r.sequenceResults) {
+    const s = r.sequenceResults.success?.length ?? 0
+    const f = r.sequenceResults.failed?.length ?? 0
+    parts.push(`Sequence: ${s} enrolled, ${f} failed.`)
+  }
+  return parts.length ? parts.join('\n\n') : 'Done.'
+}
+
+const WELCOME_MESSAGE: { id: string; content: string; role: 'assistant'; timestamp: Date } = {
+  id: 'welcome',
+  content: 'Send a **single website URL** to scrape for contacts, or say **"niche"** / **"run niche"** to run the Niche schools agent (uses best-schools search; no URL needed).',
+  role: 'assistant',
+  timestamp: new Date(),
+}
 
 export default function Home() {
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState<Array<{ id: string; content: string; role: 'user' | 'assistant'; timestamp: Date }>>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
 
   useEffect(() => {
-    setMessages(INITIAL_MESSAGES)
+    setMessages([WELCOME_MESSAGE])
     setIsMounted(true)
   }, [])
 
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = async (text: string) => {
     if (!text.trim()) return
 
-    // Add user message
     const userMessage = {
       id: Date.now().toString(),
       content: text,
@@ -64,45 +70,50 @@ export default function Home() {
     setInput('')
     setIsLoading(true)
 
-    // Simulate AI response delay
-    setTimeout(() => {
-      const responses = [
-        'That\'s a great question! Let me think about that...',
-        'I understand what you\'re asking. Here\'s what I know about that topic...',
-        'That\'s an interesting perspective. I\'d like to add a few thoughts...',
-        'Thanks for asking! This is an important concept in the field...',
-      ]
+    try {
+      const res = await fetch(`${AGENT_API_URL}/agent/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text.trim() }),
+      })
+      const data = await res.json().catch(() => ({}))
+      const content = formatAgentResponse(data)
 
       const assistantMessage = {
         id: (Date.now() + 1).toString(),
-        content: responses[Math.floor(Math.random() * responses.length)],
+        content,
         role: 'assistant' as const,
         timestamp: new Date(),
       }
-
       setMessages((prev) => [...prev, assistantMessage])
+    } catch (err) {
+      const errorContent = err instanceof Error ? err.message : 'Request failed. Is the agent server running on port 3001?'
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          content: `**Error:** ${errorContent}`,
+          role: 'assistant' as const,
+          timestamp: new Date(),
+        },
+      ])
+    } finally {
       setIsLoading(false)
-    }, 500)
+    }
   }
 
   if (!isMounted) {
     return (
-      <div className="flex h-screen bg-background text-foreground overflow-hidden">
-        <Sidebar />
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="text-muted-foreground">Loading...</div>
-        </div>
+      <div className="flex h-screen bg-background text-foreground overflow-hidden flex-col items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen bg-background text-foreground overflow-hidden">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <ChatArea messages={messages} isLoading={isLoading} />
-        <InputArea input={input} setInput={setInput} onSend={handleSendMessage} isLoading={isLoading} />
-      </div>
+    <div className="flex h-screen bg-background text-foreground overflow-hidden flex-col">
+      <ChatArea messages={messages} isLoading={isLoading} />
+      <InputArea input={input} setInput={setInput} onSend={handleSendMessage} isLoading={isLoading} />
     </div>
   )
 }

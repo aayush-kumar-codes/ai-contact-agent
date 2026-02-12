@@ -1,0 +1,27 @@
+---
+description: Frontend chat calls the agent API; keep request/response in sync with router
+globs: frontend/**/*.tsx
+alwaysApply: false
+---
+
+# Frontend ↔ Agent API
+
+The chat UI calls the backend agent API. Keep these in sync.
+
+## API
+
+- **Endpoint**: `POST {NEXT_PUBLIC_AGENT_API_URL || http://localhost:3001}/agent/chat`
+- **Body**: `{ message: string }` (user message)
+- **Response**: `{ ok: boolean, intent?: string, result?: object, message?: string }`
+  - `ok: false` → show `message` to the user
+  - `ok: true` → `result` has `contacts`, `csvPath`, `hubspotResults`, `sequenceResults`; format for display in the chat
+
+## Backend
+
+- Router: `src/router.js` — `routeAndRun()`, `POST /chat`
+- Server: `src/index.js` — mounts router at `/agent`, CORS allows frontend origin
+
+## Conventions
+
+- Use `NEXT_PUBLIC_AGENT_API_URL` in the frontend for the API base URL.
+- Format agent success/error in one place (e.g. `formatAgentResponse`) so UI and API contract stay aligned.

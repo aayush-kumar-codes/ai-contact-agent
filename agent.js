@@ -15,7 +15,7 @@ function getContactsFilename() {
   return `contacts-${dd}-${mm}-${year}.csv`;
 }
 
-async function runAgent(nicheSearchUrl, options = {}) {
+export async function runAgent(nicheSearchUrl, options = {}) {
   const {
     maxSchools = 10,
     sequenceId = null,
@@ -168,10 +168,13 @@ async function runAgent(nicheSearchUrl, options = {}) {
   }
 }
 
-// Run the agent
-runAgent('https://www.niche.com/k12/search/best-schools/?geoip=true', {
-  maxSchools: 5,
-  sequenceId: process.env.SEQUENCE_ID || null,
-  userId: process.env.USER_ID ? parseInt(process.env.USER_ID, 10) : null,
-  senderEmail: process.env.SENDER_EMAIL || null,
-});
+// Run the agent only when this file is executed directly (e.g. node agent.js), not when imported
+const isRunDirectly = process.argv[1] && process.argv[1].endsWith('agent.js');
+if (isRunDirectly) {
+  runAgent('https://www.niche.com/k12/search/best-schools/?geoip=true', {
+    maxSchools: 5,
+    sequenceId: process.env.SEQUENCE_ID || null,
+    userId: process.env.USER_ID ? parseInt(process.env.USER_ID, 10) : null,
+    senderEmail: process.env.SENDER_EMAIL || null,
+  });
+}
