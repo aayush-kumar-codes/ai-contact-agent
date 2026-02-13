@@ -54,23 +54,33 @@ export async function runSingleWebsite(websiteUrl, options = {}) {
     userId = null,
     senderEmail = null,
     outputFile = getContactsFilename(),
+    onProgress = () => {},
   } = options;
 
   const aiExtractor = new AIExtractor(process.env.OPENAI_API_KEY);
   const scraper = new WebScraper();
   const allContacts = [];
 
+  const progress = (id, label, detail, status) => {
+    onProgress({ id, label, detail, status });
+  };
+
   try {
     console.log('🚀 Starting single-website contact extraction...\n');
+    progress('init', 'Initializing scraper...', null, 'running');
     await scraper.init();
+    progress('init', 'Initializing scraper...', null, 'done');
 
     const schoolInfo = schoolInfoFromUrl(websiteUrl);
     console.log(`📍 Target: ${websiteUrl} (${schoolInfo.name})\n`);
 
     console.log('📍 Step 1: Scraping website for contacts...');
+    progress('step1', 'Scraping website for contacts', null, 'running');
     const websiteContent = await scraper.scrapeContactPage(websiteUrl);
+    progress('step1', 'Scraping website for contacts', null, 'done');
 
     console.log('📍 Step 2: Extracting contacts with AI...');
+    progress('step2', 'Extracting contacts with AI', null, 'running');
     const extracted = await aiExtractor.extractContacts(websiteContent, schoolInfo);
 
     if (extracted.contacts && extracted.contacts.length > 0) {
@@ -89,31 +99,40 @@ export async function runSingleWebsite(websiteUrl, options = {}) {
         schoolState: extracted.schoolState || null,
       }));
       allContacts.push(...enrichedContacts);
+      progress('step2', 'Extracting contacts with AI', `Extracted ${enrichedContacts.length} contacts`, 'done');
       console.log(`   ✅ Extracted ${enrichedContacts.length} contacts\n`);
     } else {
+      progress('step2', 'Extracting contacts with AI', 'No contacts found', 'done');
       console.log('   ⚠️ No contacts found for this website\n');
     }
 
     console.log('📍 Step 3: Exporting to CSV...');
+    progress('csv', 'Exporting to CSV', null, 'running');
     await fs.mkdir('output', { recursive: true });
     const csvPath = await exportToCSV(allContacts, outputFile);
+    progress('csv', 'Exporting to CSV', null, 'done');
 
     let hubspotResults = null;
     if (allContacts.length > 0) {
       console.log('\n📍 Step 4: Uploading to HubSpot...');
+      progress('hubspot', 'Uploading to HubSpot', null, 'running');
       try {
         hubspotResults = await uploadContactsToHubSpot(allContacts);
+        progress('hubspot', 'Uploading to HubSpot', `${hubspotResults.success.length} synced, ${hubspotResults.failed.length} failed`, 'done');
       } catch (error) {
         console.error('❌ HubSpot upload failed:', error.message);
         hubspotResults = { success: [], failed: [], total: 0 };
+        progress('hubspot', 'Uploading to HubSpot', `Failed: ${error.message}`, 'skipped');
       }
     } else {
+      progress('hubspot', 'Uploading to HubSpot', 'No contacts to sync', 'skipped');
       console.log('\n📍 Step 4: Skipping HubSpot upload (no contacts to sync)');
     }
 
     let sequenceResults = null;
     if (sequenceId && userId != null && senderEmail && hubspotResults && hubspotResults.success.length > 0) {
       console.log('\n📍 Step 5: Enrolling contacts in Sales Sequence...');
+      progress('sequence', 'Enrolling contacts in Sales Sequence', null, 'running');
       try {
         const successfulContacts = allContacts.filter((contact) =>
           hubspotResults.success.some((result) => result.email === contact.email)
@@ -126,25 +145,31 @@ export async function runSingleWebsite(websiteUrl, options = {}) {
           process.env.HUBSPOT_ACCESS_TOKEN,
           {
             delayBetweenContacts: 200,
-            onProgress: (progress) => {
-              const pct = ((progress.processed / progress.total) * 100).toFixed(1);
+            onProgress: (progressData) => {
+              const pct = ((progressData.processed / progressData.total) * 100).toFixed(1);
               console.log(
-                `[Sequence] Progress: ${progress.processed}/${progress.total} (${pct}%) - Success: ${progress.success}, Failed: ${progress.failed}`
+                `[Sequence] Progress: ${progressData.processed}/${progressData.total} (${pct}%) - Success: ${progressData.success}, Failed: ${progressData.failed}`
               );
             },
           }
         );
+        progress('sequence', 'Enrolling contacts in Sales Sequence', `${sequenceResults.success.length} enrolled, ${sequenceResults.failed.length} failed`, 'done');
       } catch (error) {
         console.error('❌ Sequence enrollment failed:', error.message);
         sequenceResults = { success: [], failed: [], total: 0 };
+        progress('sequence', 'Enrolling contacts in Sales Sequence', `Failed: ${error.message}`, 'skipped');
       }
     } else if (sequenceId && userId != null && senderEmail && allContacts.length === 0) {
+      progress('sequence', 'Enrolling contacts in Sales Sequence', 'No contacts to enroll', 'skipped');
       console.log('\n📍 Step 5: Skipping sequence enrollment (no contacts to enroll)');
     } else if (!sequenceId) {
+      progress('sequence', 'Enrolling contacts in Sales Sequence', 'No sequenceId provided', 'skipped');
       console.log('\n📍 Step 5: Skipping sequence enrollment (no sequenceId provided)');
     } else if (userId == null) {
+      progress('sequence', 'Enrolling contacts in Sales Sequence', 'No userId provided', 'skipped');
       console.log('\n📍 Step 5: Skipping sequence enrollment (no userId provided)');
     } else if (!senderEmail) {
+      progress('sequence', 'Enrolling contacts in Sales Sequence', 'No senderEmail provided', 'skipped');
       console.log('\n📍 Step 5: Skipping sequence enrollment (no senderEmail provided)');
     }
 

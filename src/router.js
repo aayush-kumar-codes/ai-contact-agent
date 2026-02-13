@@ -1,9 +1,12 @@
+import path from 'path';
+import fs from 'fs/promises';
 import { detectIntent } from './intent-detector.js';
 import { runAgent } from '../agent.js';
 import { runSingleWebsite } from './single-website-agent.js';
 import { Router } from 'express';
 
 const router = Router();
+const OUTPUT_DIR = path.join(process.cwd(), 'output');
 
 
 const DEFAULT_NICHE_URL = 'https://www.niche.com/k12/search/best-schools/?geoip=true';
@@ -75,6 +78,119 @@ router.post('/chat', async (req, res) => {
   const { message } = req.body;
   const result = await routeAndRun(message);
   res.json(result);
+});
+
+/**
+ * Send an SSE event. Use in /chat/stream only.
+ */
+function sendSSE(res, event) {
+  res.write(`data: ${JSON.stringify(event)}\n\n`);
+  if (typeof res.flush === 'function') res.flush();
+}
+
+router.post('/chat/stream', async (req, res) => {
+  const { message } = req.body;
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders && res.flushHeaders();
+
+  const trimmed = (message || '').trim();
+  if (!trimmed) {
+    sendSSE(res, { type: 'error', message: DEFAULT_CLARIFY_MESSAGE });
+    res.end();
+    return;
+  }
+
+  let resolved;
+  try {
+    resolved = await detectIntent(trimmed);
+  } catch (error) {
+    console.error('[Router] Intent detection failed:', error.message);
+    sendSSE(res, { type: 'error', message: 'Intent detection failed. Please try again or provide a Niche or website URL.' });
+    res.end();
+    return;
+  }
+
+  const { intent, nicheSearchUrl, websiteUrl, message: intentMessage } = resolved;
+
+  if (intent === 'unknown') {
+    sendSSE(res, { type: 'error', message: intentMessage || DEFAULT_CLARIFY_MESSAGE });
+    res.end();
+    return;
+  }
+
+  if (intent === 'single-website' && !websiteUrl) {
+    sendSSE(res, { type: 'error', message: intentMessage || 'Please provide a valid website URL.' });
+    res.end();
+    return;
+  }
+
+  sendSSE(res, { type: 'intent', intent });
+
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  const onProgress = (payload) => {
+    sendSSE(res, { type: 'step', id: payload.id, label: payload.label, detail: payload.detail ?? undefined, status: payload.status, parentId: payload.parentId ?? undefined });
+  };
+
+  try {
+    let result;
+    if (intent === 'niche') {
+      const url = nicheSearchUrl || DEFAULT_NICHE_URL;
+      result = await runAgent(url, { onProgress });
+    } else {
+      result = await runSingleWebsite(websiteUrl, { onProgress });
+    }
+
+    const csvPath = result.csvPath;
+    const csvFilename = csvPath ? path.basename(csvPath) : null;
+    const csvDownloadUrl = csvFilename ? `${baseUrl}/agent/download/csv?filename=${encodeURIComponent(csvFilename)}` : null;
+
+    sendSSE(res, {
+      type: 'done',
+      result: {
+        contactsCount: result.contacts?.length ?? 0,
+        csvPath: result.csvPath ?? null,
+        csvDownloadUrl,
+        hubspotResults: result.hubspotResults ?? null,
+        sequenceResults: result.sequenceResults ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('[Router] Stream agent error:', error.message);
+    sendSSE(res, { type: 'error', message: error.message || 'Agent run failed.' });
+  } finally {
+    res.end();
+  }
+});
+
+router.get('/download/csv', async (req, res) => {
+  const filename = req.query.filename;
+  if (!filename || typeof filename !== 'string') {
+    res.status(400).json({ error: 'Missing or invalid filename' });
+    return;
+  }
+  // Prevent path traversal: only allow basename (no slashes, no ..)
+  const safe = path.normalize(filename).replace(/^(\.\.(\/|\\|$))+/, '');
+  if (safe !== filename || filename.includes('..') || path.isAbsolute(filename)) {
+    res.status(400).json({ error: 'Invalid filename' });
+    return;
+  }
+  const filePath = path.join(OUTPUT_DIR, filename);
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(path.resolve(OUTPUT_DIR))) {
+    res.status(400).json({ error: 'Invalid filename' });
+    return;
+  }
+  try {
+    await fs.access(resolved);
+  } catch {
+    res.status(404).json({ error: 'File not found' });
+    return;
+  }
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Type', 'text/csv');
+  res.sendFile(resolved);
 });
 
 export default router;

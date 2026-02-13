@@ -9,6 +9,7 @@ interface Message {
   content: string
   role: 'user' | 'assistant'
   timestamp: Date
+  agentRun?: { steps: { id: string; label: string; detail?: string; status: string }[]; summary?: string; csvDownloadUrl?: string }
 }
 
 interface ChatAreaProps {
