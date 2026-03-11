@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import path from 'path';
 import fs from 'fs/promises';
 import { detectIntent } from './intent-detector.js';
@@ -7,6 +8,23 @@ import { Router } from 'express';
 
 const router = Router();
 const OUTPUT_DIR = path.join(process.cwd(), 'output');
+
+function parseEnvInt(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  if (!s) return null;
+  const n = Number.parseInt(s, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function getOptionsFromEnv() {
+  return {
+    maxSchools: parseEnvInt(process.env.MAX_SCHOOLS) ?? undefined,
+    sequenceId: parseEnvInt(process.env.SEQUENCE_ID),
+    userId: parseEnvInt(process.env.USER_ID),
+    senderEmail: (process.env.SENDER_EMAIL || '').trim() || null,
+  };
+}
 
 
 const DEFAULT_NICHE_URL = 'https://www.niche.com/k12/search/best-schools/?geoip=true';
@@ -76,7 +94,7 @@ export async function routeAndRun(userQuery, options = {}) {
 
 router.post('/chat', async (req, res) => {
   const { message } = req.body;
-  const result = await routeAndRun(message);
+  const result = await routeAndRun(message, getOptionsFromEnv());
   res.json(result);
 });
 
@@ -135,11 +153,12 @@ router.post('/chat/stream', async (req, res) => {
 
   try {
     let result;
+    const envOptions = getOptionsFromEnv();
     if (intent === 'niche') {
       const url = nicheSearchUrl || DEFAULT_NICHE_URL;
-      result = await runAgent(url, { onProgress });
+      result = await runAgent(url, { ...envOptions, onProgress });
     } else {
-      result = await runSingleWebsite(websiteUrl, { onProgress });
+      result = await runSingleWebsite(websiteUrl, { ...envOptions, onProgress });
     }
 
     const csvPath = result.csvPath;

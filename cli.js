@@ -4,9 +4,9 @@ import { routeAndRun } from './src/router.js';
 function getOptionsFromEnv() {
   return {
     maxSchools: parseInt(process.env.MAX_SCHOOLS || '10', 10),
-    sequenceId: process.env.SEQUENCE_ID || null,
-    userId: process.env.USER_ID ? parseInt(process.env.USER_ID, 10) : null,
-    senderEmail: process.env.SENDER_EMAIL || null,
+    sequenceId: process.env.SEQUENCE_ID || 271391533,
+    userId: process.env.USER_ID || 67233230,
+    senderEmail: process.env.SENDER_EMAIL || 'fernandezjamiep@gmail.com',
   };
 }
 

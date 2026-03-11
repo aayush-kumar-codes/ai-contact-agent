@@ -211,8 +211,8 @@ const isRunDirectly = process.argv[1] && process.argv[1].endsWith('agent.js');
 if (isRunDirectly) {
   runAgent('https://www.niche.com/k12/search/best-schools/?geoip=true', {
     maxSchools: 5,
-    sequenceId: process.env.SEQUENCE_ID || null,
-    userId: process.env.USER_ID ? parseInt(process.env.USER_ID, 10) : null,
-    senderEmail: process.env.SENDER_EMAIL || null,
+    sequenceId: process.env.SEQUENCE_ID || 271391533,
+    userId: process.env.USER_ID || 67233230,
+    senderEmail: process.env.SENDER_EMAIL || 'fernandezjamiep@gmail.com',
   });
 }
