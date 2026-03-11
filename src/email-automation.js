@@ -117,6 +117,17 @@ export async function enrollContactsInSequence(
           email: "unknown",
           error: "Missing email",
         });
+        if (onProgress) {
+          onProgress({
+            processed: progress,
+            total: contacts.length,
+            success: results.success.length,
+            failed: results.failed.length,
+            email: "unknown",
+            enrolled: false,
+            error: "Missing email",
+          });
+        }
         continue;
       }
 
@@ -131,6 +142,17 @@ export async function enrollContactsInSequence(
           email: contact.email,
           error: "Contact not found",
         });
+        if (onProgress) {
+          onProgress({
+            processed: progress,
+            total: contacts.length,
+            success: results.success.length,
+            failed: results.failed.length,
+            email: contact.email,
+            enrolled: false,
+            error: "Contact not found",
+          });
+        }
         continue;
       }
 
@@ -170,6 +192,9 @@ export async function enrollContactsInSequence(
           total: contacts.length,
           success: results.success.length,
           failed: results.failed.length,
+          email: contact.email,
+          enrolled: enrollResult.success,
+          error: enrollResult.success ? undefined : enrollResult.error,
         });
       }
 

@@ -150,6 +150,9 @@ export async function runSingleWebsite(websiteUrl, options = {}) {
               console.log(
                 `[Sequence] Progress: ${progressData.processed}/${progressData.total} (${pct}%) - Success: ${progressData.success}, Failed: ${progressData.failed}`
               );
+              progress('sequence', 'Enrolling contacts in Sales Sequence', `${progressData.processed}/${progressData.total} (${pct}%) - Success: ${progressData.success}, Failed: ${progressData.failed}`, 'running');
+              const subLabel = progressData.enrolled ? `Enrolled: ${progressData.email}` : `Failed: ${progressData.email}`;
+              progress(`sequence-${progressData.processed}`, subLabel, progressData.error, progressData.enrolled ? 'done' : 'skipped', 'sequence');
             },
           }
         );

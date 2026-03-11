@@ -158,6 +158,9 @@ export async function runAgent(nicheSearchUrl, options = {}) {
               console.log(
                 `[Sequence] Progress: ${progressData.processed}/${progressData.total} (${percentage}%) - Success: ${progressData.success}, Failed: ${progressData.failed}`
               );
+              progress('sequence', 'Enrolling contacts in Sales Sequence', `${progressData.processed}/${progressData.total} (${percentage}%) - Success: ${progressData.success}, Failed: ${progressData.failed}`, 'running');
+              const subLabel = progressData.enrolled ? `Enrolled: ${progressData.email}` : `Failed: ${progressData.email}`;
+              progress(`sequence-${progressData.processed}`, subLabel, progressData.error, progressData.enrolled ? 'done' : 'skipped', 'sequence');
             },
           }
         );
