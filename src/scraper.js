@@ -55,11 +55,73 @@ export class WebScraper {
         }
       });
 
+      const currentPage = this.getCurrentPageNumber($, nicheUrl);
+      const pageLinks = this.getPaginationLinks($);
+      const totalPages = pageLinks.reduce(
+        (maxPage, link) => Math.max(maxPage, link.pageNumber),
+        currentPage
+      );
+      const nextPageUrl =
+        $('a[aria-label*="next page"]').attr('href')?.trim() || null;
+      const pagination = {
+        currentPage,
+        totalPages,
+        pageLinks,
+        nextPageUrl: nextPageUrl
+          ? (nextPageUrl.startsWith('http')
+              ? nextPageUrl
+              : `https://www.niche.com${nextPageUrl}`)
+          : null,
+      };
+
       console.log(`[Scraper] Found ${schoolLinks.length} school links`);
-      return { content, schoolLinks };
+      return { content, schoolLinks, pagination };
     } catch (error) {
       console.error(`[Scraper] Error scraping niche page ${nicheUrl}:`, error);
       throw error;
+    }
+  }
+
+  getCurrentPageNumber($, nicheUrl) {
+    const selectedHref = $('a[aria-current="page"]').attr('href');
+    const selectedPage = this.extractPageNumber(selectedHref);
+    if (selectedPage) return selectedPage;
+    return this.extractPageNumber(nicheUrl) || 1;
+  }
+
+  getPaginationLinks($) {
+    const pageLinks = [];
+
+    $('.search-pagination-container a[href*="page="], nav[aria-label="pagination navigation"] a[href*="page="]').each((_, el) => {
+      const href = $(el).attr('href')?.trim();
+      const pageNumber = this.extractPageNumber(href);
+
+      if (!href || !pageNumber) return;
+
+      const fullUrl = href.startsWith('http')
+        ? href
+        : `https://www.niche.com${href}`;
+
+      if (!pageLinks.some((link) => link.pageNumber === pageNumber)) {
+        pageLinks.push({
+          pageNumber,
+          url: fullUrl,
+        });
+      }
+    });
+
+    pageLinks.sort((a, b) => a.pageNumber - b.pageNumber);
+    return pageLinks;
+  }
+
+  extractPageNumber(urlValue) {
+    if (!urlValue) return null;
+    try {
+      const url = new URL(urlValue, 'https://www.niche.com');
+      const pageNumber = Number.parseInt(url.searchParams.get('page') || '1', 10);
+      return Number.isFinite(pageNumber) && pageNumber > 0 ? pageNumber : null;
+    } catch {
+      return null;
     }
   }
 

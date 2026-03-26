@@ -67,6 +67,49 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   const showSummary = agentRun && (agentRun.summary || agentRun.csvDownloadUrl)
   const displayContent = showSummary ? (agentRun.summary ?? '') : message.content
 
+  const isVerboseSuccessChild = (step: AgentRunStep) => {
+    if (!step.parentId || step.status !== 'done') return false
+    return (
+      step.label === 'Fetching school profile' ||
+      step.label === 'Scraping school website for contacts' ||
+      step.label === 'Extracting contacts with AI' ||
+      step.label.startsWith('HubSpot synced:') ||
+      step.label.startsWith('Sequence enrolled:')
+    )
+  }
+
+  const getVisibleSteps = (steps: AgentRunStep[]) => {
+    const byParent = steps.reduce<Record<string, AgentRunStep[]>>((acc, step) => {
+      if (step.parentId) {
+        if (!acc[step.parentId]) acc[step.parentId] = []
+        acc[step.parentId].push(step)
+      }
+      return acc
+    }, {})
+
+    const topLevel = steps.filter((step) => !step.parentId)
+    const visibleTopLevel = topLevel.filter((step) => {
+      const children = byParent[step.id] ?? []
+      const hasVisibleChildren = children.some((child) => !isVerboseSuccessChild(child))
+      if (step.status === 'running') return true
+      if (step.status === 'skipped') return true
+      if (step.label.startsWith('Page ') || step.label.startsWith('CSV updated')) return true
+      if (step.label.startsWith('Uploading to HubSpot') || step.label.startsWith('Enrolling in sequence')) return true
+      if (step.label.startsWith('School on page')) return true
+      if (children.length === 0) return true
+      return hasVisibleChildren
+    })
+
+    const visibleByParent = Object.fromEntries(
+      Object.entries(byParent).map(([parentId, children]) => [
+        parentId,
+        children.filter((child) => !isVerboseSuccessChild(child)),
+      ])
+    )
+
+    return { visibleTopLevel, visibleByParent }
+  }
+
   return (
     <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -80,14 +123,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           <div className="space-y-1 mb-3 text-sm">
             {(() => {
               const steps = agentRun!.steps
-              const topLevel = steps.filter((s) => !s.parentId)
-              const byParent = steps.reduce<Record<string, AgentRunStep[]>>((acc, s) => {
-                if (s.parentId) {
-                  if (!acc[s.parentId]) acc[s.parentId] = []
-                  acc[s.parentId].push(s)
-                }
-                return acc
-              }, {})
+              const { visibleTopLevel, visibleByParent } = getVisibleSteps(steps)
               const stepIcon = (step: AgentRunStep) => {
                 if (step.status === 'running')
                   return <Loader2 size={14} className="shrink-0 mt-0.5 animate-spin text-muted-foreground" />
@@ -113,10 +149,10 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
               )
               return (
                 <>
-                  {topLevel.map((step) => (
+                  {visibleTopLevel.map((step) => (
                     <div key={step.id} className="space-y-0.5">
                       {renderStep(step, false)}
-                      {(byParent[step.id] ?? []).map((sub) => renderStep(sub, true))}
+                      {(visibleByParent[step.id] ?? []).map((sub) => renderStep(sub, true))}
                     </div>
                   ))}
                 </>

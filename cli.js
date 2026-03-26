@@ -7,6 +7,8 @@ function getOptionsFromEnv() {
     sequenceId: process.env.SEQUENCE_ID || 271391533,
     userId: process.env.USER_ID || 67233230,
     senderEmail: process.env.SENDER_EMAIL || 'fernandezjamiep@gmail.com',
+    pageBatchSize: parseInt(process.env.NICHE_PAGE_BATCH_SIZE || '1', 10),
+    schoolBatchSize: parseInt(process.env.NICHE_SCHOOL_BATCH_SIZE || '5', 10),
   };
 }
 

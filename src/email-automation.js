@@ -91,6 +91,8 @@ export async function enrollContactsInSequence(
   const {
     delayBetweenContacts = 300,
     onProgress = null,
+    onResult = null,
+    shouldStop = null,
   } = options;
 
   if (!contacts?.length) {
@@ -108,15 +110,20 @@ export async function enrollContactsInSequence(
   );
 
   for (let i = 0; i < contacts.length; i++) {
+    if (shouldStop && await shouldStop()) {
+      return { ...results, stopped: true };
+    }
+
     const contact = contacts[i];
     const progress = i + 1;
 
     try {
       if (!contact.email) {
-        results.failed.push({
+        const missingEmailResult = {
           email: "unknown",
           error: "Missing email",
-        });
+        };
+        results.failed.push(missingEmailResult);
         if (onProgress) {
           onProgress({
             processed: progress,
@@ -128,6 +135,9 @@ export async function enrollContactsInSequence(
             error: "Missing email",
           });
         }
+        if (onResult) {
+          await onResult({ ...missingEmailResult, success: false });
+        }
         continue;
       }
 
@@ -138,10 +148,11 @@ export async function enrollContactsInSequence(
       );
 
       if (!contactId) {
-        results.failed.push({
+        const missingContactResult = {
           email: contact.email,
           error: "Contact not found",
-        });
+        };
+        results.failed.push(missingContactResult);
         if (onProgress) {
           onProgress({
             processed: progress,
@@ -152,6 +163,9 @@ export async function enrollContactsInSequence(
             enrolled: false,
             error: "Contact not found",
           });
+        }
+        if (onResult) {
+          await onResult({ ...missingContactResult, success: false });
         }
         continue;
       }
@@ -166,24 +180,32 @@ export async function enrollContactsInSequence(
       );
 
       if (enrollResult.success) {
-        results.success.push({
+        const successResult = {
           email: contact.email,
           contactId,
-        });
+        };
+        results.success.push(successResult);
 
         console.log(
           `✅ [${progress}/${contacts.length}] Enrolled: ${contact.email}`
         );
+        if (onResult) {
+          await onResult({ ...successResult, success: true });
+        }
       } else {
-        results.failed.push({
+        const failedResult = {
           email: contact.email,
           contactId,
           error: enrollResult.error,
-        });
+        };
+        results.failed.push(failedResult);
 
         console.log(
           `❌ [${progress}/${contacts.length}] Failed: ${contact.email} - ${enrollResult.error}`
         );
+        if (onResult) {
+          await onResult({ ...failedResult, success: false });
+        }
       }
 
       if (onProgress) {
@@ -204,10 +226,14 @@ export async function enrollContactsInSequence(
         );
       }
     } catch (error) {
-      results.failed.push({
+      const errorResult = {
         email: contact.email || "unknown",
         error: error.message,
-      });
+      };
+      results.failed.push(errorResult);
+      if (onResult) {
+        await onResult({ ...errorResult, success: false });
+      }
     }
   }
 

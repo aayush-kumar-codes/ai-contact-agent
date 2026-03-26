@@ -1,0 +1,148 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum NicheRunStatus {
+  pending
+  running
+  stopping
+  stopped
+  completed
+  failed
+}
+
+enum NicheRunStage {
+  discovering_pages
+  processing_schools
+  exporting_csv
+  syncing_hubspot
+  enrolling_sequence
+  stopped
+  completed
+  failed
+}
+
+enum NicheSchoolStatus {
+  pending
+  processing
+  completed
+  skipped
+  failed
+}
+
+enum SyncStatus {
+  pending
+  completed
+  failed
+}
+
+model User {
+  id        Int        @id @default(autoincrement())
+  email     String     @unique
+  name      String?
+  nicheRuns NicheRun[]
+}
+
+model NicheRun {
+  id                   String          @id @default(cuid())
+  searchUrl            String
+  normalizedSearchUrl  String
+  outputFile           String
+  pageBatchSize        Int             @default(1)
+  maxSchools           Int?
+  sequenceId           Int?
+  senderEmail          String?
+  status               NicheRunStatus  @default(pending)
+  stage                NicheRunStage   @default(discovering_pages)
+  stopRequested        Boolean         @default(false)
+  currentPage          Int             @default(1)
+  nextPage             Int             @default(1)
+  totalPages           Int?
+  lastCompletedPage    Int             @default(0)
+  schoolsDiscovered    Int             @default(0)
+  schoolsProcessed     Int             @default(0)
+  schoolsCompleted     Int             @default(0)
+  schoolsSkipped       Int             @default(0)
+  contactsExtracted    Int             @default(0)
+  hubspotSynced        Int             @default(0)
+  hubspotFailed        Int             @default(0)
+  sequenceEnrolled     Int             @default(0)
+  sequenceFailed       Int             @default(0)
+  lastError            String?
+  startedAt            DateTime?
+  stopRequestedAt      DateTime?
+  completedAt          DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  userId               Int?
+  user                 User?           @relation(fields: [userId], references: [id])
+  schools              NicheSchool[]
+  contacts             NicheContact[]
+
+  @@index([normalizedSearchUrl, status])
+  @@index([status, updatedAt])
+}
+
+model NicheSchool {
+  id             String            @id @default(cuid())
+  runId          String
+  pageNumber     Int
+  nicheSchoolUrl String
+  schoolName     String?
+  officialWebsite String?
+  status         NicheSchoolStatus @default(pending)
+  skipReason     String?
+  errorMessage   String?
+  contactsFound  Int               @default(0)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  run            NicheRun          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  contacts       NicheContact[]
+
+  @@unique([runId, nicheSchoolUrl])
+  @@index([runId, pageNumber, status])
+}
+
+model NicheContact {
+  id                String     @id @default(cuid())
+  runId             String
+  schoolId          String?
+  email             String
+  firstName         String
+  lastName          String?
+  jobTitle          String?
+  phone             String?
+  schoolName        String?
+  schoolDomain      String?
+  schoolPhone       String?
+  schoolState       String?
+  csvExportedAt     DateTime?
+  hubspotStatus     SyncStatus @default(pending)
+  hubspotContactId  String?
+  hubspotAction     String?
+  hubspotError      String?
+  hubspotProcessedAt DateTime?
+  sequenceStatus    SyncStatus @default(pending)
+  sequenceError     String?
+  sequenceProcessedAt DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  run               NicheRun   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  school            NicheSchool? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+
+  @@unique([runId, email])
+  @@index([runId, hubspotStatus])
+  @@index([runId, sequenceStatus])
+}

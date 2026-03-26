@@ -7,10 +7,20 @@ interface InputAreaProps {
   input: string
   setInput: (value: string) => void
   onSend: (message: string) => void
+  onStop: () => void
   isLoading: boolean
+  isStopping: boolean
+  activeRun: {
+    id: string
+    status: 'pending' | 'running' | 'stopping' | 'stopped' | 'completed' | 'failed'
+    nextPage: number
+    totalPages?: number | null
+    schoolsProcessed?: number
+    contactsExtracted?: number
+  } | null
 }
 
-export default function InputArea({ input, setInput, onSend, isLoading }: InputAreaProps) {
+export default function InputArea({ input, setInput, onSend, onStop, isLoading, isStopping, activeRun }: InputAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -32,6 +42,8 @@ export default function InputArea({ input, setInput, onSend, isLoading }: InputA
     onSend(input)
   }
 
+  const showStop = isLoading && !!activeRun
+
   return (
     <div className="border-t border-border bg-background p-6">
       <div className="max-w-3xl mx-auto">
@@ -49,6 +61,17 @@ export default function InputArea({ input, setInput, onSend, isLoading }: InputA
                 rows={1}
               />
             </div>
+            {showStop && (
+              <button
+                type="button"
+                onClick={onStop}
+                disabled={isStopping}
+                className="flex items-center justify-center h-9 px-3 border border-border text-foreground rounded-md hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Stop current run"
+              >
+                {isStopping ? 'Stopping...' : 'Stop'}
+              </button>
+            )}
             <button
               type="submit"
               disabled={isLoading || !input.trim()}

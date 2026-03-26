@@ -5,6 +5,7 @@ import { detectIntent } from './intent-detector.js';
 import { runAgent } from '../agent.js';
 import { runSingleWebsite } from './single-website-agent.js';
 import { Router } from 'express';
+import { getLatestActiveNicheRun, requestRunStop, serializeRun } from './niche-run-state.js';
 
 const router = Router();
 const OUTPUT_DIR = path.join(process.cwd(), 'output');
@@ -23,6 +24,8 @@ function getOptionsFromEnv() {
     sequenceId: parseEnvInt(process.env.SEQUENCE_ID),
     userId: parseEnvInt(process.env.USER_ID),
     senderEmail: (process.env.SENDER_EMAIL || '').trim() || null,
+    pageBatchSize: parseEnvInt(process.env.NICHE_PAGE_BATCH_SIZE) ?? 1,
+    schoolBatchSize: parseEnvInt(process.env.NICHE_SCHOOL_BATCH_SIZE) ?? 5,
   };
 }
 
@@ -34,7 +37,7 @@ const DEFAULT_CLARIFY_MESSAGE =
 /**
  * Detect intent from user query, then run the appropriate agent (niche or single-website).
  * @param {string} userQuery - Raw user message
- * @param {object} options - Passed to runAgent / runSingleWebsite (maxSchools, sequenceId, userId, senderEmail, outputFile)
+ * @param {object} options - Passed to runAgent / runSingleWebsite (maxSchools, sequenceId, userId, senderEmail, outputFile, pageBatchSize, schoolBatchSize)
  * @returns {Promise<{ ok: boolean, intent?: string, result?: object, message?: string }>}
  */
 export async function routeAndRun(userQuery, options = {}) {
@@ -98,6 +101,34 @@ router.post('/chat', async (req, res) => {
   res.json(result);
 });
 
+router.get('/runs/niche/active', async (_req, res) => {
+  try {
+    const activeRun = await getLatestActiveNicheRun();
+    res.json({ ok: true, run: serializeRun(activeRun) });
+  } catch (error) {
+    console.error('[Router] Failed to load active Niche run:', error.message);
+    res.status(500).json({ ok: false, message: error.message || 'Failed to load active Niche run.' });
+  }
+});
+
+router.post('/runs/niche/stop', async (req, res) => {
+  try {
+    const runId = typeof req.body?.runId === 'string' ? req.body.runId : null;
+    const targetRun = runId ? { id: runId } : await getLatestActiveNicheRun();
+
+    if (!targetRun?.id) {
+      res.status(404).json({ ok: false, message: 'No active Niche run found.' });
+      return;
+    }
+
+    const updatedRun = await requestRunStop(targetRun.id);
+    res.json({ ok: true, run: serializeRun(updatedRun) });
+  } catch (error) {
+    console.error('[Router] Failed to stop Niche run:', error.message);
+    res.status(500).json({ ok: false, message: error.message || 'Failed to stop Niche run.' });
+  }
+});
+
 /**
  * Send an SSE event. Use in /chat/stream only.
  */
@@ -150,13 +181,16 @@ router.post('/chat/stream', async (req, res) => {
   const onProgress = (payload) => {
     sendSSE(res, { type: 'step', id: payload.id, label: payload.label, detail: payload.detail ?? undefined, status: payload.status, parentId: payload.parentId ?? undefined });
   };
+  const onRunUpdate = (run) => {
+    sendSSE(res, { type: 'run', run });
+  };
 
   try {
     let result;
     const envOptions = getOptionsFromEnv();
     if (intent === 'niche') {
       const url = nicheSearchUrl || DEFAULT_NICHE_URL;
-      result = await runAgent(url, { ...envOptions, onProgress });
+      result = await runAgent(url, { ...envOptions, onProgress, onRunUpdate });
     } else {
       result = await runSingleWebsite(websiteUrl, { ...envOptions, onProgress });
     }
@@ -168,6 +202,8 @@ router.post('/chat/stream', async (req, res) => {
     sendSSE(res, {
       type: 'done',
       result: {
+        status: result.status ?? 'completed',
+        run: result.run ?? null,
         contactsCount: result.contacts?.length ?? 0,
         csvPath: result.csvPath ?? null,
         csvDownloadUrl,

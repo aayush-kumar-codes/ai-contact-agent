@@ -11,8 +11,20 @@ const AGENT_API_URL = (() => {
   return url.replace(/\/$/, '') // trim trailing slash
 })()
 
+export type NicheRunState = {
+  id: string
+  status: 'pending' | 'running' | 'stopping' | 'stopped' | 'completed' | 'failed'
+  stage: string
+  currentPage: number
+  nextPage: number
+  totalPages?: number | null
+  lastCompletedPage?: number
+  schoolsProcessed?: number
+  contactsExtracted?: number
+}
+
 export type AgentRunStep = { id: string; label: string; detail?: string; status: 'running' | 'done' | 'skipped'; parentId?: string }
-export type AgentRun = { steps: AgentRunStep[]; summary?: string; csvDownloadUrl?: string }
+export type AgentRun = { steps: AgentRunStep[]; summary?: string; csvDownloadUrl?: string; run?: NicheRunState | null }
 
 export type Message = {
   id: string
@@ -24,22 +36,31 @@ export type Message = {
 
 /** Build summary text from stream done result. */
 function buildSummary(result: {
+  status?: string
+  run?: NicheRunState | null
   contactsCount?: number
-  hubspotResults?: { success?: unknown[]; failed?: unknown[] }
-  sequenceResults?: { success?: unknown[]; failed?: unknown[] }
+  hubspotResults?: { success?: unknown[]; failed?: unknown[]; successCount?: number; failedCount?: number }
+  sequenceResults?: { success?: unknown[]; failed?: unknown[]; successCount?: number; failedCount?: number }
 }): string {
   const parts: string[] = []
+  if (result.status === 'stopped') {
+    parts.push('Run stopped. Resume will continue from the saved checkpoint.')
+  }
+  if (result.run && typeof result.run.nextPage === 'number') {
+    const pageLabel = result.run.totalPages ? `${result.run.nextPage}/${result.run.totalPages}` : `${result.run.nextPage}`
+    parts.push(`Next page checkpoint: ${pageLabel}.`)
+  }
   if (typeof result.contactsCount === 'number' && result.contactsCount > 0) {
     parts.push(`**${result.contactsCount}** contact(s) extracted.`)
   }
   if (result.hubspotResults) {
-    const s = result.hubspotResults.success?.length ?? 0
-    const f = result.hubspotResults.failed?.length ?? 0
+    const s = result.hubspotResults.successCount ?? result.hubspotResults.success?.length ?? 0
+    const f = result.hubspotResults.failedCount ?? result.hubspotResults.failed?.length ?? 0
     parts.push(`HubSpot: ${s} synced, ${f} failed.`)
   }
   if (result.sequenceResults) {
-    const s = result.sequenceResults.success?.length ?? 0
-    const f = result.sequenceResults.failed?.length ?? 0
+    const s = result.sequenceResults.successCount ?? result.sequenceResults.success?.length ?? 0
+    const f = result.sequenceResults.failedCount ?? result.sequenceResults.failed?.length ?? 0
     parts.push(`Sequence: ${s} enrolled, ${f} failed.`)
   }
   return parts.length ? parts.join('\n\n') : 'Done.'
@@ -104,10 +125,24 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
+  const [activeNicheRun, setActiveNicheRun] = useState<NicheRunState | null>(null)
+  const [isStopping, setIsStopping] = useState(false)
+
+  const refreshActiveRun = async () => {
+    try {
+      const res = await fetch(`${AGENT_API_URL}/agent/runs/niche/active`)
+      if (!res.ok) return
+      const data = (await res.json()) as { run?: NicheRunState | null }
+      setActiveNicheRun(data.run ?? null)
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     setMessages([WELCOME_MESSAGE])
     setIsMounted(true)
+    refreshActiveRun()
   }, [])
 
   const handleSendMessage = async (text: string) => {
@@ -123,6 +158,7 @@ export default function Home() {
     setMessages((prev) => [...prev, userMessage])
     setInput('')
     setIsLoading(true)
+    setIsStopping(false)
 
     const assistantId = (Date.now() + 1).toString()
     const assistantMessage: Message = {
@@ -154,7 +190,17 @@ export default function Home() {
       }
 
       await consumeSSE(res, (event) => {
-        if (event.type === 'step') {
+        if (event.type === 'run' && event.run) {
+          const run = event.run as NicheRunState
+          setActiveNicheRun(run)
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId && m.agentRun
+                ? { ...m, agentRun: { ...m.agentRun, run } }
+                : m
+            )
+          )
+        } else if (event.type === 'step') {
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id !== assistantId || !m.agentRun) return m
@@ -175,11 +221,14 @@ export default function Home() {
           )
         } else if (event.type === 'done' && event.result) {
           const result = event.result as {
+            status?: string
+            run?: NicheRunState | null
             contactsCount?: number
             csvDownloadUrl?: string
-            hubspotResults?: { success?: unknown[]; failed?: unknown[] }
-            sequenceResults?: { success?: unknown[]; failed?: unknown[] }
+            hubspotResults?: { success?: unknown[]; failed?: unknown[]; successCount?: number; failedCount?: number }
+            sequenceResults?: { success?: unknown[]; failed?: unknown[]; successCount?: number; failedCount?: number }
           }
+          setActiveNicheRun(result.status === 'completed' ? null : (result.run ?? null))
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId && m.agentRun
@@ -190,6 +239,7 @@ export default function Home() {
                       ...m.agentRun,
                       summary: buildSummary(result),
                       csvDownloadUrl: result.csvDownloadUrl ?? undefined,
+                      run: result.run ?? undefined,
                     },
                   }
                 : m
@@ -216,6 +266,25 @@ export default function Home() {
       )
     } finally {
       setIsLoading(false)
+      setIsStopping(false)
+      refreshActiveRun()
+    }
+  }
+
+  const handleStopRun = async () => {
+    if (!activeNicheRun?.id || isStopping) return
+    setIsStopping(true)
+    try {
+      const res = await fetch(`${AGENT_API_URL}/agent/runs/niche/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId: activeNicheRun.id }),
+      })
+      if (!res.ok) return
+      const data = (await res.json()) as { run?: NicheRunState | null }
+      setActiveNicheRun(data.run ?? activeNicheRun)
+    } catch {
+      // ignore
     }
   }
 
@@ -230,7 +299,15 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden flex-col">
       <ChatArea messages={messages} isLoading={isLoading} />
-      <InputArea input={input} setInput={setInput} onSend={handleSendMessage} isLoading={isLoading} />
+      <InputArea
+        input={input}
+        setInput={setInput}
+        onSend={handleSendMessage}
+        onStop={handleStopRun}
+        activeRun={activeNicheRun}
+        isLoading={isLoading}
+        isStopping={isStopping}
+      />
     </div>
   )
 }

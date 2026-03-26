@@ -280,6 +280,8 @@ export class HubSpotClient {
       batchSize = 10,
       delayBetweenBatches = 1000, // 1 second delay between batches
       onProgress = null,
+      onResult = null,
+      shouldStop = null,
     } = options;
 
     const results = {
@@ -290,6 +292,10 @@ export class HubSpotClient {
 
     // Process contacts in batches to avoid rate limits
     for (let i = 0; i < contacts.length; i += batchSize) {
+      if (shouldStop && await shouldStop()) {
+        return { ...results, stopped: true };
+      }
+
       const batch = contacts.slice(i, i + batchSize);
       const batchNumber = Math.floor(i / batchSize) + 1;
       const totalBatches = Math.ceil(contacts.length / batchSize);
@@ -300,6 +306,10 @@ export class HubSpotClient {
 
       // Process each contact in the batch
       for (const contact of batch) {
+        if (shouldStop && await shouldStop()) {
+          return { ...results, stopped: true };
+        }
+
         try {
           const result = await this.upsertContact(contact);
           
@@ -316,6 +326,10 @@ export class HubSpotClient {
             if (result.rawError && Object.keys(result.rawError).length > 0) {
               console.log(`     Details:`, JSON.stringify(result.rawError, null, 2));
             }
+          }
+
+          if (onResult) {
+            await onResult(result);
           }
 
           // Small delay between individual contacts to respect rate limits
@@ -342,6 +356,9 @@ export class HubSpotClient {
           // Log full error for debugging
           if (errorBody && Object.keys(errorBody).length > 0) {
             console.log(`     Full error:`, JSON.stringify(errorBody, null, 2));
+          }
+          if (onResult) {
+            await onResult(errorResult);
           }
         }
       }
@@ -370,7 +387,7 @@ export class HubSpotClient {
  * Convenience function to upload contacts to HubSpot
  * This is the main export function used by the agent
  */
-export async function uploadContactsToHubSpot(contacts) {
+export async function uploadContactsToHubSpot(contacts, options = {}) {
   const accessToken = process.env.HUBSPOT_ACCESS_TOKEN;
   
   if (!accessToken) {
@@ -398,11 +415,16 @@ export async function uploadContactsToHubSpot(contacts) {
     const results = await hubspotClient.uploadContacts(contacts, {
       batchSize: 10,
       delayBetweenBatches: 1000,
+      onResult: options.onResult || null,
+      shouldStop: options.shouldStop || null,
       onProgress: (progress) => {
         const percentage = ((progress.processed / progress.total) * 100).toFixed(1);
         console.log(
           `[HubSpot] Progress: ${progress.processed}/${progress.total} (${percentage}%) - Success: ${progress.success}, Failed: ${progress.failed}`
         );
+        if (options.onProgress) {
+          options.onProgress(progress);
+        }
       },
     });
 
