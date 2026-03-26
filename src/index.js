@@ -13,6 +13,9 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json());
+app.get('/', (req, res) => {
+  res.send('Hello From AI Contact Agent');
+});
 app.use('/agent', router);
 const PORT = process.env.PORT || 3001;
 prisma.$connect().then(() => {
