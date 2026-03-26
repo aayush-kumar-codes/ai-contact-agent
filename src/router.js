@@ -1,14 +1,36 @@
 import 'dotenv/config';
 import path from 'path';
 import fs from 'fs/promises';
+import rateLimit from 'express-rate-limit';
 import { detectIntent } from './intent-detector.js';
 import { generateGeneralChatReply } from './general-chat.js';
 import { runAgent } from '../agent.js';
 import { runSingleWebsite } from './single-website-agent.js';
 import { Router } from 'express';
 import { getLatestActiveNicheRun, requestRunStop, serializeRun } from './niche-run-state.js';
+import { withAgentRunLock } from './agent-run-lock.js';
 
 const router = Router();
+
+const rateLimitWindowMs = Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS || '', 10) || 15 * 60 * 1000;
+const chatPostLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: Number.parseInt(process.env.RATE_LIMIT_CHAT_MAX || '', 10) || 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const streamPostLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: Number.parseInt(process.env.RATE_LIMIT_STREAM_MAX || '', 10) || 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+const readLimiter = rateLimit({
+  windowMs: rateLimitWindowMs,
+  max: Number.parseInt(process.env.RATE_LIMIT_READ_MAX || '', 10) || 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 const OUTPUT_DIR = path.join(process.cwd(), 'output');
 
 function parseEnvInt(value) {
@@ -97,7 +119,7 @@ export async function routeAndRun(userQuery, options = {}) {
 
   if (intent === 'niche') {
     const url = nicheSearchUrl || DEFAULT_NICHE_URL;
-    const result = await runAgent(url, options);
+    const result = await withAgentRunLock(() => runAgent(url, options));
     return { ok: true, intent: 'niche', result };
   }
 
@@ -109,7 +131,7 @@ export async function routeAndRun(userQuery, options = {}) {
         message: message || 'Please provide a valid website URL.',
       };
     }
-    const result = await runSingleWebsite(websiteUrl, options);
+    const result = await withAgentRunLock(() => runSingleWebsite(websiteUrl, options));
     return { ok: true, intent: 'single-website', result };
   }
 
@@ -120,13 +142,13 @@ export async function routeAndRun(userQuery, options = {}) {
 }
 
 
-router.post('/chat', async (req, res) => {
+router.post('/chat', chatPostLimiter, async (req, res) => {
   const { message } = req.body;
   const result = await routeAndRun(message, getOptionsFromEnv());
   res.json(result);
 });
 
-router.get('/runs/niche/active', async (_req, res) => {
+router.get('/runs/niche/active', readLimiter, async (_req, res) => {
   try {
     const activeRun = await getLatestActiveNicheRun();
     res.json({ ok: true, run: serializeRun(activeRun) });
@@ -136,7 +158,7 @@ router.get('/runs/niche/active', async (_req, res) => {
   }
 });
 
-router.post('/runs/niche/stop', async (req, res) => {
+router.post('/runs/niche/stop', chatPostLimiter, async (req, res) => {
   try {
     const runId = typeof req.body?.runId === 'string' ? req.body.runId : null;
     const targetRun = runId ? { id: runId } : await getLatestActiveNicheRun();
@@ -162,7 +184,7 @@ function sendSSE(res, event) {
   if (typeof res.flush === 'function') res.flush();
 }
 
-router.post('/chat/stream', async (req, res) => {
+router.post('/chat/stream', streamPostLimiter, async (req, res) => {
   const { message } = req.body;
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -218,9 +240,13 @@ router.post('/chat/stream', async (req, res) => {
       result = buildGeneralChatResult(reply);
     } else if (intent === 'niche') {
       const url = nicheSearchUrl || DEFAULT_NICHE_URL;
-      result = await runAgent(url, { ...envOptions, onProgress, onRunUpdate });
+      result = await withAgentRunLock(() =>
+        runAgent(url, { ...envOptions, onProgress, onRunUpdate })
+      );
     } else {
-      result = await runSingleWebsite(websiteUrl, { ...envOptions, onProgress });
+      result = await withAgentRunLock(() =>
+        runSingleWebsite(websiteUrl, { ...envOptions, onProgress })
+      );
     }
 
     const csvPath = result.csvPath;
@@ -249,7 +275,7 @@ router.post('/chat/stream', async (req, res) => {
   }
 });
 
-router.get('/download/csv', async (req, res) => {
+router.get('/download/csv', readLimiter, async (req, res) => {
   const filename = req.query.filename;
   if (!filename || typeof filename !== 'string') {
     res.status(400).json({ error: 'Missing or invalid filename' });

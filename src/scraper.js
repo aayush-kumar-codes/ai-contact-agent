@@ -184,7 +184,11 @@ export class WebScraper {
   async scrapeContactPage(websiteUrl) {
     try {
       console.log(`[Scraper] Scraping school website: ${websiteUrl}`);
-      
+      const maxExtraPages = Math.min(
+        8,
+        Math.max(1, Number.parseInt(process.env.MAX_CONTACT_PAGE_LINKS || '6', 10) || 6)
+      );
+
       // Scrape main page first
       const mainResult = await this.scrapfly.scrape(
         new ScrapeConfig({
@@ -216,7 +220,7 @@ export class WebScraper {
               return;
             }
           }
-          if (fullUrl && !contactLinks.includes(fullUrl) && contactLinks.length < 8) {
+          if (fullUrl && !contactLinks.includes(fullUrl) && contactLinks.length < maxExtraPages) {
             contactLinks.push(fullUrl);
           }
         }

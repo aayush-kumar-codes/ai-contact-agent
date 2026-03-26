@@ -242,20 +242,20 @@ export default function Home() {
           }
           setActiveNicheRun(result.status === 'completed' ? null : (result.run ?? null))
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId && m.agentRun
-                ? {
-                    ...m,
-                    content: buildSummary(result),
-                    agentRun: {
-                      ...m.agentRun,
-                      summary: buildSummary(result),
-                      csvDownloadUrl: result.csvDownloadUrl ?? undefined,
-                      run: result.run ?? undefined,
-                    },
-                  }
-                : m
-            )
+            prev.map((m) => {
+              if (m.id !== assistantId || !m.agentRun) return m
+              const summary = buildSummary(result)
+              return {
+                ...m,
+                content: summary,
+                agentRun: {
+                  ...m.agentRun,
+                  summary,
+                  csvDownloadUrl: result.csvDownloadUrl ?? undefined,
+                  run: result.run ?? undefined,
+                },
+              }
+            })
           )
         } else if (event.type === 'error') {
           setMessages((prev) =>

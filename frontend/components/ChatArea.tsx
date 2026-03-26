@@ -4,12 +4,18 @@ import { useEffect, useRef } from 'react'
 import { MessageSquare } from 'lucide-react'
 import MessageBubble from './MessageBubble'
 
+type AgentRunStepStatus = 'running' | 'done' | 'skipped'
+
 interface Message {
   id: string
   content: string
   role: 'user' | 'assistant'
   timestamp: Date
-  agentRun?: { steps: { id: string; label: string; detail?: string; status: string }[]; summary?: string; csvDownloadUrl?: string }
+  agentRun?: {
+    steps: { id: string; label: string; detail?: string; status: AgentRunStepStatus; parentId?: string }[]
+    summary?: string
+    csvDownloadUrl?: string
+  }
 }
 
 interface ChatAreaProps {

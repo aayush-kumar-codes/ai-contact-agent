@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   // Proxy /agent/* to the backend in dev so relative URLs work if env is misconfigured
   async rewrites() {

@@ -6,6 +6,10 @@ import { prisma } from '../prisma.js';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
 const app = express();
 
+if (process.env.TRUST_PROXY === '1' || process.env.TRUST_PROXY === 'true') {
+  app.set('trust proxy', 1);
+}
+
 app.use(cors({
   origin: CORS_ORIGIN,
   methods: ['GET', 'POST', 'OPTIONS','PUT','DELETE'],

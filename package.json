@@ -5,14 +5,18 @@
   "main": "src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node agent.js",
+    "start": "node src/index.js",
+    "start:api": "node src/index.js",
+    "agent:cli": "node agent.js",
     "test-workflow": "node test-workflow.js",
     "run": "node cli.js",
     "dev": "node src/index.js",
     "prisma:generate": "prisma generate",
     "prisma:deploy": "prisma generate && prisma migrate deploy",
-    "pm2:start": "npm run prisma:deploy && pm2 start agent.js --name ai-contact-agent --update-env",
-    "pm2:restart": "npm run prisma:deploy && pm2 restart ai-contact-agent --update-env"
+    "frontend:build": "npm run build --prefix frontend",
+    "frontend:start": "npm run start --prefix frontend",
+    "pm2:start": "npm run prisma:deploy && pm2 start ecosystem.config.cjs --update-env",
+    "pm2:restart": "npm run prisma:deploy && pm2 reload ecosystem.config.cjs --update-env"
   },
   "keywords": [],
   "author": "",
@@ -28,9 +32,9 @@
     "csv-writer": "^1.6.0",
     "dotenv": "^17.3.1",
     "express": "^4.21.0",
+    "express-rate-limit": "^7.5.0",
     "openai": "^6.9.1",
     "pg": "^8.20.0",
-    "puppeteer": "^24.31.0",
     "scrapfly-sdk": "^0.6.9",
     "zod": "^4.3.6"
   },
