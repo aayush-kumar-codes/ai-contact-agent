@@ -27,6 +27,10 @@ routeAndRun(query, getOptionsFromEnv())
       process.exitCode = 1;
       return;
     }
+    if (out.intent === 'general-chat') {
+      console.log(`\n[Assistant] ${out.result?.reply || out.message || ''}`);
+      return;
+    }
     if (out.result) {
       console.log('\n[Router] Intent:', out.intent, '– Result: contacts:', out.result.contacts?.length ?? 0, ', CSV:', out.result.csvPath ?? '');
     }

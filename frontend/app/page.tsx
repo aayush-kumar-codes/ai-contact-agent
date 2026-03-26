@@ -38,10 +38,19 @@ export type Message = {
 function buildSummary(result: {
   status?: string
   run?: NicheRunState | null
+  summary?: string
+  reply?: string
   contactsCount?: number
   hubspotResults?: { success?: unknown[]; failed?: unknown[]; successCount?: number; failedCount?: number }
   sequenceResults?: { success?: unknown[]; failed?: unknown[]; successCount?: number; failedCount?: number }
 }): string {
+  if (typeof result.summary === 'string' && result.summary.trim()) {
+    return result.summary
+  }
+  if (typeof result.reply === 'string' && result.reply.trim()) {
+    return result.reply
+  }
+
   const parts: string[] = []
   if (result.status === 'stopped') {
     parts.push('Run stopped. Resume will continue from the saved checkpoint.')
@@ -68,7 +77,8 @@ function buildSummary(result: {
 
 const WELCOME_MESSAGE: Message = {
   id: 'welcome',
-  content: 'Send a **single website URL** to scrape for contacts, or say **"niche"** / **"run niche"** to run the Niche schools agent (uses best-schools search; no URL needed).',
+  content:
+    'Send a **single website URL** to find contacts on that site, or type **"run niche"** to search Niche school listings for you.\n\nExamples:\n**https://www.example.com**\n**run niche**\n**find contacts from Niche schools**',
   role: 'assistant',
   timestamp: new Date(),
 }
@@ -223,6 +233,8 @@ export default function Home() {
           const result = event.result as {
             status?: string
             run?: NicheRunState | null
+            summary?: string
+            reply?: string
             contactsCount?: number
             csvDownloadUrl?: string
             hubspotResults?: { success?: unknown[]; failed?: unknown[]; successCount?: number; failedCount?: number }

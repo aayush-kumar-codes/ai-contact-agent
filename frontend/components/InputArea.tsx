@@ -55,7 +55,7 @@ export default function InputArea({ input, setInput, onSend, onStop, isLoading, 
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask me anything..."
+                placeholder="Paste any website URL or type “run niche”"
                 disabled={isLoading}
                 className="w-full bg-secondary border border-border rounded-lg px-4 py-3 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-foreground focus:ring-1 focus:ring-foreground transition-colors resize-none max-h-48 disabled:opacity-50 disabled:cursor-not-allowed"
                 rows={1}

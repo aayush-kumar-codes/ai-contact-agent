@@ -1,12 +1,12 @@
 import OpenAI from 'openai';
 
-const VALID_INTENTS = ['niche', 'single-website', 'unknown'];
+const VALID_INTENTS = ['niche', 'single-website', 'general-chat', 'unknown'];
 
 /**
  * Detect user intent and extract URL from a natural language query.
  * @param {string} userQuery - Raw user message
  * @param {string} apiKey - OpenAI API key
- * @returns {Promise<{ intent: 'niche'|'single-website'|'unknown', nicheSearchUrl?: string, websiteUrl?: string, message?: string }>}
+ * @returns {Promise<{ intent: 'niche'|'single-website'|'general-chat'|'unknown', nicheSearchUrl?: string, websiteUrl?: string, message?: string }>}
  */
 export async function detectIntent(userQuery, apiKey = process.env.OPENAI_API_KEY) {
   if (!apiKey) {
@@ -20,17 +20,19 @@ export async function detectIntent(userQuery, apiKey = process.env.OPENAI_API_KE
     messages: [
       {
         role: 'system',
-        content: `You are an intent classifier for a contact-scraping agent. Classify the user's request into one of two intents and extract the relevant URL.
+        content: `You are an intent classifier for a contact-scraping agent. Classify the user's request into one of four intents and extract the relevant URL when needed.
 
 **niche**: The user wants to scrape or search Niche.com (the school-ratings website). Treat ALL of these as intent "niche" with the default URL when no URL is given: "run niche", "scrape niche", "scrape the niche website", "scraped the niche website", "the niche site", "niche.com", "best schools", or any Niche.com search/list URL. Here "niche" means the brand/site Niche.com, not the word "niche" meaning specialized. Set intent to "niche". Use nicheSearchUrl from the user if they provided a Niche.com URL; otherwise use "https://www.niche.com/k12/search/best-schools/?geoip=true". Never return "unknown" when the user clearly refers to scraping or searching Niche/the Niche website.
 
 **single-website**: The user provides one specific website URL (not niche.com) to scrape for contacts, e.g. "extract contacts from https://lincolnschool.edu" or "scrape this school site: https://example-school.org". Set intent to "single-website" and put that URL in websiteUrl. Normalize the URL to start with https:// if the user omitted scheme.
 
-**unknown**: The query is ambiguous, has no URL, or cannot be classified. Set intent to "unknown" and include a short "message" suggesting the user provide either a Niche search URL or a single website URL.
+**general-chat**: The user is chatting normally and is not asking to run a scrape. Examples: "hello", "how are you", "what can you do?", "help me", or other general questions. Set intent to "general-chat".
+
+**unknown**: The user appears to want scraping/contact extraction, but the request is still too ambiguous or incomplete to run safely. Set intent to "unknown" and include a short "message" suggesting the user provide either a Niche search URL or a single website URL.
 
 Return ONLY valid JSON with this shape (no markdown, no extra text):
 {
-  "intent": "niche" | "single-website" | "unknown",
+  "intent": "niche" | "single-website" | "general-chat" | "unknown",
   "nicheSearchUrl": "url or null",
   "websiteUrl": "url or null",
   "message": "optional clarification message when intent is unknown"
@@ -82,6 +84,10 @@ Return ONLY valid JSON with this shape (no markdown, no extra text):
       intent: 'unknown',
       message: parsed.message || 'Please provide a valid website URL to scrape.',
     };
+  }
+
+  if (intent === 'general-chat') {
+    return { intent: 'general-chat' };
   }
 
   return {

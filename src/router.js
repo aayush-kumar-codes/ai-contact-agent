@@ -2,6 +2,7 @@ import 'dotenv/config';
 import path from 'path';
 import fs from 'fs/promises';
 import { detectIntent } from './intent-detector.js';
+import { generateGeneralChatReply } from './general-chat.js';
 import { runAgent } from '../agent.js';
 import { runSingleWebsite } from './single-website-agent.js';
 import { Router } from 'express';
@@ -34,6 +35,20 @@ const DEFAULT_NICHE_URL = 'https://www.niche.com/k12/search/best-schools/?geoip=
 const DEFAULT_CLARIFY_MESSAGE =
   'Send a **single website URL** to scrape for contacts, or say "niche" / "run niche" to use the Niche schools agent (no URL needed).';
 
+function buildGeneralChatResult(reply) {
+  return {
+    status: 'completed',
+    reply,
+    summary: reply,
+    contactsCount: 0,
+    csvPath: null,
+    csvDownloadUrl: null,
+    hubspotResults: null,
+    sequenceResults: null,
+    run: null,
+  };
+}
+
 /**
  * Detect intent from user query, then run the appropriate agent (niche or single-website).
  * @param {string} userQuery - Raw user message
@@ -61,6 +76,16 @@ export async function routeAndRun(userQuery, options = {}) {
   }
 
   const { intent, nicheSearchUrl, websiteUrl, message } = resolved;
+
+  if (intent === 'general-chat') {
+    const reply = await generateGeneralChatReply(trimmed);
+    return {
+      ok: true,
+      intent: 'general-chat',
+      result: buildGeneralChatResult(reply),
+      message: reply,
+    };
+  }
 
   if (intent === 'unknown') {
     return {
@@ -188,7 +213,10 @@ router.post('/chat/stream', async (req, res) => {
   try {
     let result;
     const envOptions = getOptionsFromEnv();
-    if (intent === 'niche') {
+    if (intent === 'general-chat') {
+      const reply = await generateGeneralChatReply(trimmed);
+      result = buildGeneralChatResult(reply);
+    } else if (intent === 'niche') {
       const url = nicheSearchUrl || DEFAULT_NICHE_URL;
       result = await runAgent(url, { ...envOptions, onProgress, onRunUpdate });
     } else {
@@ -204,7 +232,9 @@ router.post('/chat/stream', async (req, res) => {
       result: {
         status: result.status ?? 'completed',
         run: result.run ?? null,
-        contactsCount: result.contacts?.length ?? 0,
+        reply: result.reply ?? null,
+        summary: result.summary ?? null,
+        contactsCount: result.contacts?.length ?? result.contactsCount ?? 0,
         csvPath: result.csvPath ?? null,
         csvDownloadUrl,
         hubspotResults: result.hubspotResults ?? null,

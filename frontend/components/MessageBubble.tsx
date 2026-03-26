@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, Check, Loader2, CheckCircle2, CircleSlash } from 'lucide-react'
+import { Copy, Check, Loader2, CheckCircle2, CircleSlash, Globe, Search, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 
 interface AgentRunStep {
@@ -38,6 +38,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   }
 
   const isUser = message.role === 'user'
+  const isWelcomeMessage = !isUser && message.id === 'welcome'
 
   // Simple markdown-like formatting
   const formatContent = (text: string) => {
@@ -110,6 +111,56 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     return { visibleTopLevel, visibleByParent }
   }
 
+  const renderWelcomeMessage = () => (
+    <div className="max-w-2xl rounded-2xl border border-border bg-secondary/40 p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-background text-foreground">
+          <Sparkles size={18} />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-lg font-semibold text-foreground">Find contacts from a website in one message</h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            Send either a single website URL or a simple request to run the Niche schools agent. No technical setup or special formatting is required.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-border bg-background p-4">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+            <Globe size={16} />
+            Scrape one website
+          </div>
+          <p className="text-sm text-muted-foreground">Paste any single website URL and the agent will search that site for contacts.</p>
+          <div className="mt-3 rounded-lg bg-secondary px-3 py-2 text-sm text-foreground break-all">
+            https://www.example.com
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-border bg-background p-4">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
+            <Search size={16} />
+            Run the Niche schools agent
+          </div>
+          <p className="text-sm text-muted-foreground">Type a short request and the agent will search Niche&apos;s best-schools listings for you.</p>
+          <div className="mt-3 space-y-2 text-sm text-foreground">
+            <div className="rounded-lg bg-secondary px-3 py-2">run niche</div>
+            <div className="rounded-lg bg-secondary px-3 py-2">find contacts from Niche schools</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-dashed border-border bg-background/70 p-4">
+        <div className="text-sm font-medium text-foreground">How to use it</div>
+        <div className="mt-2 space-y-2 text-sm leading-6 text-muted-foreground">
+          <div>1. Send a website URL or type a Niche request.</div>
+          <div>2. The agent will show progress as it searches and extracts contacts.</div>
+          <div>3. When finished, you can review the results and download the CSV if available.</div>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -161,7 +212,9 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        {displayContent ? (
+        {isWelcomeMessage ? (
+          renderWelcomeMessage()
+        ) : displayContent ? (
           <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
             {formatContent(displayContent)}
           </div>
