@@ -8,7 +8,11 @@
     "start": "node agent.js",
     "test-workflow": "node test-workflow.js",
     "run": "node cli.js",
-    "dev": "node src/index.js"
+    "dev": "node src/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma generate && prisma migrate deploy",
+    "pm2:start": "npm run prisma:deploy && pm2 start agent.js --name ai-contact-agent --update-env",
+    "pm2:restart": "npm run prisma:deploy && pm2 restart ai-contact-agent --update-env"
   },
   "keywords": [],
   "author": "",
